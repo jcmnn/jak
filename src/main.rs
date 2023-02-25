@@ -14,6 +14,8 @@
 #![no_std]
 #![no_main]
 
+mod keycodes;
+
 // The macro for our start-up function
 use rp_pico::entry;
 
@@ -38,10 +40,16 @@ use rp_pico::hal;
 // USB Device support
 use usb_device::{class_prelude::*, prelude::*};
 
+use usbd_hid::descriptor::KeyboardReport;
 // USB Human Interface Device (HID) Class support
 use usbd_hid::descriptor::generator_prelude::*;
 use usbd_hid::descriptor::MouseReport;
 use usbd_hid::hid_class::HIDClass;
+use usbd_hid::hid_class::HidClassSettings;
+use usbd_hid::hid_class::HidCountryCode;
+use usbd_hid::hid_class::HidProtocol;
+use usbd_hid::hid_class::HidSubClass;
+use usbd_hid::hid_class::ProtocolModeConfig;
 
 /// The USB Device Driver (shared with the interrupt).
 static mut USB_DEVICE: Option<UsbDevice<hal::usb::UsbBus>> = None;
@@ -112,7 +120,17 @@ fn main() -> ! {
     let bus_ref = unsafe { USB_BUS.as_ref().unwrap() };
 
     // Set up the USB HID Class Device driver, providing Mouse Reports
-    let usb_hid = HIDClass::new(bus_ref, MouseReport::desc(), 60);
+    let usb_hid = HIDClass::new_with_settings(
+        bus_ref,
+        KeyboardReport::desc(),
+        10,
+        HidClassSettings {
+            subclass: HidSubClass::NoSubClass,
+            protocol: HidProtocol::Keyboard,
+            config: ProtocolModeConfig::ForceReport,
+            locale: HidCountryCode::NotSupported,
+        },
+    );
     unsafe {
         // Note (safety): This is safe as interrupts haven't been started yet.
         USB_HID = Some(usb_hid);
@@ -121,8 +139,8 @@ fn main() -> ! {
     // Create a USB device with a fake VID and PID
     let usb_dev = UsbDeviceBuilder::new(bus_ref, UsbVidPid(0x16c0, 0x27da))
         .manufacturer("Fake company")
-        .product("Twitchy Mousey")
-        .serial_number("TEST")
+        .product("Twitchy kb")
+        .serial_number("TEST2")
         .device_class(0)
         .build();
     unsafe {
@@ -137,7 +155,39 @@ fn main() -> ! {
     let core = pac::CorePeripherals::take().unwrap();
     let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().to_Hz());
 
+    let inputs = [
+        keycodes::KEY_H,
+        keycodes::KEY_O,
+        keycodes::KEY_M,
+        keycodes::KEY_I,
+        keycodes::KEY_N,
+        keycodes::KEY_A,
+        keycodes::KEY_SPACE,
+    ];
+
+    let mut ptr = &inputs[..];
+
+    delay.delay_ms(1000);
+
+    loop {
+        delay.delay_ms(30);
+        let code = ptr[0];
+        let report = KeyboardReport {
+            keycodes: [code, 0, 0, 0, 0, 0],
+            leds: 0,
+            modifier: 0,
+            reserved: 0,
+        };
+
+        push_key(report).ok().unwrap_or(0);
+        ptr = &ptr[1..];
+        if ptr.is_empty() {
+            ptr = &inputs;
+        }
+    }
+
     // Move the cursor up and down every 200ms
+    /*
     loop {
         delay.delay_ms(100);
 
@@ -160,7 +210,21 @@ fn main() -> ! {
             pan: 0,
         };
         push_mouse_movement(rep_down).ok().unwrap_or(0);
+
+        let key_down = KeyboardReport {
+            keycodes: [0x14, 0, 0, 0, 0, 0],
+            leds: 0,
+            modifier: 0,
+            reserved: 0,
+        };
+        push_key(key_down).ok().unwrap_or(0);
     }
+    */
+}
+
+fn push_key(report: KeyboardReport) -> Result<usize, usb_device::UsbError> {
+    critical_section::with(|_| unsafe { USB_HID.as_mut().map(|hid| hid.push_input(&report)) })
+        .unwrap()
 }
 
 /// Submit a new mouse movement report to the USB stack.
@@ -184,6 +248,8 @@ unsafe fn USBCTRL_IRQ() {
     let usb_dev = USB_DEVICE.as_mut().unwrap();
     let usb_hid = USB_HID.as_mut().unwrap();
     usb_dev.poll(&mut [usb_hid]);
+
+    usb_hid.pull_raw_output(&mut [0; 64]).ok();
 }
 
 // End of file
