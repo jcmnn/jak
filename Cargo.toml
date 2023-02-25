@@ -6,6 +6,10 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+cortex-m = "0.7.7"
 cortex-m-rt = "0.7.3"
+critical-section = "1.1.1"
 panic-halt = "0.2.0"
 rp-pico = "0.7.0"
+usb-device = "0.2.9"
+usbd-hid = "0.6.1"
