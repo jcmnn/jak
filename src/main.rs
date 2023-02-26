@@ -128,7 +128,7 @@ fn main() -> ! {
     let usb_hid = HIDClass::new_with_settings(
         bus_ref,
         KeyboardReport::desc(),
-        20,
+        40,
         HidClassSettings {
             subclass: HidSubClass::NoSubClass,
             protocol: HidProtocol::Keyboard,
@@ -175,7 +175,7 @@ fn main() -> ! {
     delay.delay_ms(3000);
 
     loop {
-        delay.delay_ms(40);
+        delay.delay_ms(50);
         let code = ptr[0];
         let report = KeyboardReport {
             keycodes: [code, 0, 0, 0, 0, 0],
