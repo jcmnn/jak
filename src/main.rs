@@ -16,6 +16,9 @@
 
 mod keycodes;
 
+use core::sync::atomic::AtomicBool;
+use core::sync::atomic::Ordering;
+
 // The macro for our start-up function
 use rp_pico::entry;
 
@@ -59,6 +62,8 @@ static mut USB_BUS: Option<UsbBusAllocator<hal::usb::UsbBus>> = None;
 
 /// The USB Human Interface Device Driver (shared with the interrupt).
 static mut USB_HID: Option<HIDClass<hal::usb::UsbBus>> = None;
+
+static READY: AtomicBool = AtomicBool::new(false);
 
 /// Entry point to our bare-metal application.
 ///
@@ -123,7 +128,7 @@ fn main() -> ! {
     let usb_hid = HIDClass::new_with_settings(
         bus_ref,
         KeyboardReport::desc(),
-        10,
+        20,
         HidClassSettings {
             subclass: HidSubClass::NoSubClass,
             protocol: HidProtocol::Keyboard,
@@ -139,8 +144,8 @@ fn main() -> ! {
     // Create a USB device with a fake VID and PID
     let usb_dev = UsbDeviceBuilder::new(bus_ref, UsbVidPid(0x16c0, 0x27da))
         .manufacturer("Fake company")
-        .product("Twitchy kb")
-        .serial_number("TEST2")
+        .product("Twitchy kb2")
+        .serial_number("TEST3")
         .device_class(0)
         .build();
     unsafe {
@@ -167,10 +172,10 @@ fn main() -> ! {
 
     let mut ptr = &inputs[..];
 
-    delay.delay_ms(1000);
+    delay.delay_ms(3000);
 
     loop {
-        delay.delay_ms(30);
+        delay.delay_ms(40);
         let code = ptr[0];
         let report = KeyboardReport {
             keycodes: [code, 0, 0, 0, 0, 0],
