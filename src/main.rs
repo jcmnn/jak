@@ -19,6 +19,9 @@ mod keycodes;
 use core::sync::atomic::AtomicBool;
 use core::sync::atomic::Ordering;
 
+use cortex_m::prelude::*;
+use fugit::ExtU32;
+
 // The macro for our start-up function
 use rp_pico::entry;
 
@@ -128,7 +131,7 @@ fn main() -> ! {
     let usb_hid = HIDClass::new_with_settings(
         bus_ref,
         KeyboardReport::desc(),
-        40,
+        10,
         HidClassSettings {
             subclass: HidSubClass::NoSubClass,
             protocol: HidProtocol::Keyboard,
@@ -155,10 +158,12 @@ fn main() -> ! {
 
     unsafe {
         // Enable the USB interrupt
-        pac::NVIC::unmask(hal::pac::Interrupt::USBCTRL_IRQ);
+        //pac::NVIC::unmask(hal::pac::Interrupt::USBCTRL_IRQ);
     };
     let core = pac::CorePeripherals::take().unwrap();
     let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().to_Hz());
+
+    let timer = hal::Timer::new(pac.TIMER, &mut pac.RESETS);
 
     let inputs = [
         keycodes::KEY_H,
@@ -172,23 +177,36 @@ fn main() -> ! {
 
     let mut ptr = &inputs[..];
 
-    delay.delay_ms(3000);
+    //delay.delay_ms(3000);
+
+    let mut count_down = timer.count_down();
+    count_down.start(10.millis());
 
     loop {
-        delay.delay_ms(50);
-        let code = ptr[0];
-        let report = KeyboardReport {
-            keycodes: [code, 0, 0, 0, 0, 0],
-            leds: 0,
-            modifier: 0,
-            reserved: 0,
-        };
+        let usb_dev = unsafe { USB_DEVICE.as_mut().unwrap() };
+        let usb_hid = unsafe { USB_HID.as_mut().unwrap() };
+        usb_dev.poll(&mut [usb_hid]);
 
-        push_key(report).ok().unwrap_or(0);
-        ptr = &ptr[1..];
-        if ptr.is_empty() {
-            ptr = &inputs;
+        if count_down.wait().is_ok() {
+            let code = ptr[0];
+            let report = KeyboardReport {
+                keycodes: [code, 0, 0, 0, 0, 0],
+                leds: 0,
+                modifier: 0,
+                reserved: 0,
+            };
+
+            usb_hid.push_input(&report).ok();
+
+            //push_key(report).ok().unwrap_or(0);
+            ptr = &ptr[1..];
+            if ptr.is_empty() {
+                ptr = &inputs;
+            }
+            //count_down.start(10.millis());
         }
+
+        usb_hid.pull_raw_output(&mut [0; 64]).ok();
     }
 
     // Move the cursor up and down every 200ms
@@ -244,6 +262,7 @@ fn push_mouse_movement(report: MouseReport) -> Result<usize, usb_device::UsbErro
     .unwrap()
 }
 
+/*
 /// This function is called whenever the USB Hardware generates an Interrupt
 /// Request.
 #[allow(non_snake_case)]
@@ -255,6 +274,6 @@ unsafe fn USBCTRL_IRQ() {
     usb_dev.poll(&mut [usb_hid]);
 
     usb_hid.pull_raw_output(&mut [0; 64]).ok();
-}
+*/
 
 // End of file
