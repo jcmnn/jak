@@ -20,6 +20,8 @@ use core::sync::atomic::AtomicBool;
 use core::sync::atomic::Ordering;
 
 use cortex_m::prelude::*;
+use embedded_hal::digital::v2::OutputPin;
+use embedded_hal::digital::v2::PinState;
 use fugit::ExtU32;
 
 // The macro for our start-up function
@@ -57,6 +59,8 @@ use usbd_hid::hid_class::HidProtocol;
 use usbd_hid::hid_class::HidSubClass;
 use usbd_hid::hid_class::ProtocolModeConfig;
 
+use embedded_hal::digital::v2::InputPin;
+
 /// The USB Device Driver (shared with the interrupt).
 static mut USB_DEVICE: Option<UsbDevice<hal::usb::UsbBus>> = None;
 
@@ -79,6 +83,7 @@ static READY: AtomicBool = AtomicBool::new(false);
 fn main() -> ! {
     // Grab our singleton objects
     let mut pac = pac::Peripherals::take().unwrap();
+    let core = pac::CorePeripherals::take().unwrap();
 
     // Set up the watchdog driver - needed by the clock setup code
     let mut watchdog = hal::Watchdog::new(pac.WATCHDOG);
@@ -98,16 +103,18 @@ fn main() -> ! {
     .ok()
     .unwrap();
 
-    #[cfg(feature = "rp2040-e5")]
-    {
-        let sio = hal::Sio::new(pac.SIO);
-        let _pins = rp_pico::Pins::new(
-            pac.IO_BANK0,
-            pac.PADS_BANK0,
-            sio.gpio_bank0,
-            &mut pac.RESETS,
-        );
-    }
+    let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().to_Hz());
+
+    let sio = hal::Sio::new(pac.SIO);
+    let pins = rp_pico::Pins::new(
+        pac.IO_BANK0,
+        pac.PADS_BANK0,
+        sio.gpio_bank0,
+        &mut pac.RESETS,
+    );
+
+    let mut led = pins.gpio2.into_push_pull_output();
+    let mut button = pins.gpio3.into_pull_up_input();
 
     // Set up the USB driver
     let usb_bus = UsbBusAllocator::new(hal::usb::UsbBus::new(
@@ -160,8 +167,6 @@ fn main() -> ! {
         // Enable the USB interrupt
         pac::NVIC::unmask(hal::pac::Interrupt::USBCTRL_IRQ);
     };
-    let core = pac::CorePeripherals::take().unwrap();
-    let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().to_Hz());
 
     let timer = hal::Timer::new(pac.TIMER, &mut pac.RESETS);
 
@@ -179,51 +184,32 @@ fn main() -> ! {
 
     //delay.delay_ms(3000);
 
-        /*if count_down.wait().is_ok() {
-            let code = ptr[0];
-            let report = KeyboardReport {
-                keycodes: [code, 0, 0, 0, 0, 0],
-                leds: 0,
-                modifier: 0,
-                reserved: 0,
-            };
+    /*if count_down.wait().is_ok() {
+        let code = ptr[0];
+        let report = KeyboardReport {
+            keycodes: [code, 0, 0, 0, 0, 0],
+            leds: 0,
+            modifier: 0,
+            reserved: 0,
+        };
 
-            //usb_hid.push_input(&report).ok();
+        //usb_hid.push_input(&report).ok();
 
-            //push_key(report).ok().unwrap_or(0);
-            ptr = &ptr[1..];
-            if ptr.is_empty() {
-                ptr = &inputs;
-            }
-            //count_down.start(10.millis());
-        }*/
+        //push_key(report).ok().unwrap_or(0);
+        ptr = &ptr[1..];
+        if ptr.is_empty() {
+            ptr = &inputs;
+        }
+        //count_down.start(10.millis());
+    }*/
 
     // Move the cursor up and down every 200ms
 
     delay.delay_ms(3000);
+
     
     loop {
-        delay.delay_ms(20);
-/*
-        let rep_up = MouseReport {
-            x: 0,
-            y: 4,
-            buttons: 0,
-            wheel: 0,
-            pan: 0,
-        };
-        push_mouse_movement(rep_up).ok().unwrap_or(0);
-
-        delay.delay_ms(100);
-
-        let rep_down = MouseReport {
-            x: 0,
-            y: -4,
-            buttons: 0,
-            wheel: 0,
-            pan: 0,
-        };
-        push_mouse_movement(rep_down).ok().unwrap_or(0);*/
+        delay.delay_ms(30);
 
         let code = ptr[0];
         let report = KeyboardReport {
@@ -242,6 +228,7 @@ fn main() -> ! {
         }
         //count_down.start(10.millis());
     }
+    
 }
 
 fn push_key(report: KeyboardReport) -> Result<usize, usb_device::UsbError> {
